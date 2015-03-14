@@ -206,7 +206,9 @@ module ActiveRecord
 
       # Indicates whether the table associated with this class exists
       def table_exists?
-        connection.schema_cache.table_exists?(table_name)
+        connection_pool.with_connection do |c|
+          c.schema_cache.table_exists?(table_name)
+        end
       end
 
       # Returns an array of column objects for the table associated with this class.
