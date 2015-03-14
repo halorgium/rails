@@ -279,9 +279,15 @@ module ActiveRecord
       # #release_connection releases the connection-thread association
       # and returns the connection to the pool.
       def release_connection(with_id = current_connection_id)
+        $stderr.print "release_connection: start; thread=#{Thread.current.object_id}; with_id=#{with_id}\n"
+        Util.report
+        binding.pry unless @reserved_connections.keys.include?(with_id)
         synchronize do
           conn = @reserved_connections.delete(with_id)
-          checkin conn if conn
+          x = checkin conn if conn
+          $stderr.print "release_connection: end; thread=#{Thread.current.object_id}; conn=#{conn.object_id}\n"
+          Util.report
+          x
         end
       end
 
@@ -289,11 +295,19 @@ module ActiveRecord
       # exists checkout a connection, yield it to the block, and checkin the
       # connection when finished.
       def with_connection
+        $stderr.print "with_connection: start; thread=#{Thread.current.object_id}\n"
         connection_id = current_connection_id
         fresh_connection = true unless active_connection?
-        yield connection
+        $stderr.print "with_connection: middle; thread=#{Thread.current.object_id}; fresh_connection=#{fresh_connection.inspect}\n"
+        c = connection
+        $stderr.print "with_connection: before yield; thread=#{Thread.current.object_id}; connection=#{c.object_id}\n"
+        ret = yield c
+        $stderr.print "with_connection: end; thread=#{Thread.current.object_id}; connection=#{c.object_id}\n"
+        ret
       ensure
+        $stderr.print "with_connection: before ensure; thread=#{Thread.current.object_id}; fresh_connection=#{fresh_connection.inspect}\n"
         release_connection(connection_id) if fresh_connection
+        $stderr.print "with_connection: after ensure; thread=#{Thread.current.object_id}\n"
       end
 
       # Returns true if a connection has already been opened.
@@ -347,10 +361,19 @@ module ActiveRecord
       # Raises:
       # - ConnectionTimeoutError: no connection can be obtained from the pool.
       def checkout
+        $stderr.print "checkout: start; thread=#{Thread.current.object_id}\n"
+        $stderr.print "CALLER: #{caller.any? {|x| x.include?($EXPECTED_LINE)}}\n"
+        print "#{"-" * 160}\n"
+        print "#{caller.join("\n")}\n"
+        print "#{"-" * 160}\n"
         synchronize do
+          $stderr.print "checkout: before acquire; thread=#{Thread.current.object_id}\n"
           conn = acquire_connection
+          $stderr.print "checkout: after acquire; thread=#{Thread.current.object_id}; connection=#{conn.object_id}\n"
           conn.lease
-          checkout_and_verify(conn)
+          x = checkout_and_verify(conn)
+          $stderr.print "checkout: end; thread=#{Thread.current.object_id}; connection=#{conn.object_id}\n"
+          x
         end
       end
 
